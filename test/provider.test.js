@@ -170,6 +170,28 @@ test("provider-scoped catalog reads return null without resolving credentials", 
   assert.equal(fixture.calls.length, 0);
 });
 
+test("discovery forwards caller cancellation to pending host authentication before starting a catalog fetch", async () => {
+  const controller = new AbortController();
+  const reason = new Error("service stopped during authentication");
+  let authSignal;
+  let fetched = false;
+  const provider = createMagpieProvider({
+    config: { models: { providers: { magpie: { baseUrl: "http://127.0.0.1:3425/v1", models: [] } } } },
+    fetchRows: async () => { fetched = true; return []; },
+    resolveAuth: ({ signal }) => {
+      authSignal = signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    },
+  });
+  const discovery = provider.discover({ signal: controller.signal });
+  assert.equal(authSignal, controller.signal);
+  controller.abort(reason);
+  await assert.rejects(discovery, (error) => error === reason);
+  assert.equal(fetched, false);
+});
+
 test("unresolved auth markers fail closed", async () => {
   const provider = createMagpieProvider({
     config: { models: { providers: { magpie: { baseUrl: "http://127.0.0.1:3425/v1", models: [] } } } },

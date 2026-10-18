@@ -6,9 +6,9 @@ The suite is split into pure logic, host integration, Gateway integration, and o
 
 | Suite | What it proves |
 | --- | --- |
-| `npm test` | URL/header rules, catalog projection, prices, cache TTL/stale/auth, thinking profiles, payload patches, sync validation, service lifetime, manifest activation |
-| `npm run test:host` | Real SDK discovery, Responses and Chat SSE transports, request-time effort fields, managed `npm-pack:` install, CLI catalog/sync, one-shot host model run |
-| `npm run test:gateway` | Isolated Gateway publishes additions, removals, context changes, and an empty catalog without a restart; config stays unchanged |
+| `npm test` | URL/header rules, projection and price tiers, cache/cancellation, thinking/payloads, sync validation, service cancellation/reload lifetime, dev-script isolation with mocks, manifest activation |
+| `npm run test:host` | Real SDK discovery and cost calculation at price boundaries, Responses/Chat SSE, effort fields, managed `npm-pack:` install, CLI catalog/sync, one-shot host model run |
+| `npm run test:gateway` | Additions/removals/context/empty catalog, endpoint/key hot reload, explicit model overrides, plugin-settings replacement with subsequent periodic refresh, no plugin config writes or Gateway restart |
 | `npm run test:live` | Real Magpie `/v1/models` shape and projection; optional tiny inference cases |
 
 ## Isolation
@@ -16,6 +16,7 @@ The suite is split into pure logic, host integration, Gateway integration, and o
 `test/isolated-host-env.js` runs before any host SDK import. It:
 
 - Creates a temporary `OPENCLAW_STATE_DIR` and empty `OPENCLAW_CONFIG_PATH`.
+- Clears inherited OpenClaw/legacy profile, path and service selectors before setting isolated paths.
 - Deletes inherited API keys/tokens so ambient credentials cannot activate unrelated providers.
 - Points `XDG_CACHE_HOME` and `npm_config_cache` at temporary directories.
 
@@ -32,19 +33,21 @@ No suite starts, stops, or modifies a persistent dev or production Gateway.
 - Codex Responses mapping, Grok missing output, Cline Chat mapping, text-only inputs, unknown context/output.
 - Thinking models with no levels and non-reasoning models.
 - Image/video exclusion, duplicate/invalid IDs, invalid limits.
-- Base and tiered price conversion, including multiple half-open ranges.
+- Base and tiered price conversion, including base/threshold boundaries, multiple half-open ranges, partial cache-rate inheritance, and explicit zero.
 - `X-Magpie-Prices` and Bearer header construction.
-- Cache coalescing, TTL, stale bounds, 401/403 invalidation, credential isolation, force.
-- Explicit model overrides and nested Magpie params.
+- Cache coalescing, caller-local cancellation (including the initiating caller), independent shared timeout, genuine failure backoff, TTL, stale bounds, 401/403 invalidation, credential isolation, force.
+- Explicit model overrides and nested Magpie params; caller cancellation is forwarded through pending host authentication before catalog fetch.
 - Thinking profile defaults, nearest-effort selection, exact wire override, payload dialect.
 - Prepared catalog completeness, retained removals, explicit models, stale refusal.
 - Serialized publication, fingerprint retry, config-change publication.
-- Service immediate start, reschedule after settle, stop/join, superseded callbacks.
+- Service immediate start, reschedule after settle, abort/stop/join, no queued or late-discovery publication after cancellation, fresh host background admission for every complete sync promise, replacement rejection and recovery, drain of admitted publication, config subscriptions and restart with committed config.
+- Dev wrapper isolates CLI/help/editor/service calls; hostile inherited selectors, target/profile flags, and dev state/config symlinks fail closed. Uses mock executables and temporary HOME only.
 - Manifest `activation.onStartup` regression.
 
 ### Host integration
 
 - Real `fetchLiveProviderModelRows` sends the key and price header.
+- Public SDK `calculateCost` uses base rates below a threshold, tier rates at/above it, and inherited partial-tier cache rates.
 - Responses model uses `/v1/responses` and `reasoning.effort`.
 - Chat model uses `/v1/chat/completions` and `reasoning_effort`.
 - Model without levels sends no effort field.
@@ -58,7 +61,10 @@ No suite starts, stops, or modifies a persistent dev or production Gateway.
 - Plugin runtime inspection reports loaded and `npm-pack` install.
 - Changing server rows to `model-b` + `model-c` publishes without restart and updates context.
 - Empty rows publish an empty catalog.
-- Main config remains unchanged.
+- Endpoint/key hot changes switch to a new route/key; a later server-row change proves the periodic service uses committed config.
+- A model-only explicit context override republishes an unchanged upstream revision.
+- Plugin `refreshSeconds` hot changes replace the plugin instance; a later server-row change proves the replacement's periodic service is active.
+- Gateway stays running; config is byte-for-byte unchanged except for deliberate writes by the test.
 
 ## Live tests
 

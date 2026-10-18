@@ -23,7 +23,7 @@ Provider ID: `magpie`. Built on the public provider plugin SDK; no OpenClaw or M
 ## Install
 
 ```bash
-openclaw plugins install --link /path/to/openclaw-magpie-provider
+openclaw plugins install @sagemoyi/openclaw-magpie-provider
 ```
 
 If you use `plugins.allow`, add `magpie` without replacing existing entries, and enable it:
@@ -123,7 +123,9 @@ Configure under `plugins.entries.magpie.config`:
 - Network/5xx/invalid responses may use a bounded stale snapshot without extending its lifetime.
 - A valid empty catalog publishes empty; malformed or duplicate rows fail the snapshot instead of deleting models.
 - Request-time discovery rejects removed models.
-- Synchronization is serialized; stopped or superseded services cannot publish.
+- Synchronization is serialized. Stopping a service cancels its discovery wait and blocks publication not yet admitted; a host publication already running is awaited, not interrupted.
+- Endpoint, credentials, auth/agent context and explicit model changes restart the catalog service with committed config, without restarting the Gateway.
+- Cancelling one catalog reader does not cancel discovery shared by other readers or trigger upstream-failure backoff.
 
 ## Limitations
 

@@ -189,6 +189,7 @@ export function createMagpieProvider({
           agentDir: ctx.agentDir,
           workspaceDir: ctx.workspaceDir,
           profileId: ctx.authProfileId,
+          signal: ctx.signal,
         }))?.apiKey;
         persistedKey = apiKey;
       }

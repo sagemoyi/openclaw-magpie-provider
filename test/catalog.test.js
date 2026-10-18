@@ -28,6 +28,13 @@ test("endpoint normalization preserves proxy prefixes and rejects credentials, q
   }
 });
 
+test("endpoint normalization rejects even empty query/fragment delimiters without rejecting encoded path characters", () => {
+  for (const suffix of ["?", "#", "?#", "/?", "/#", "/v1?", "/v1#"]) {
+    assert.throws(() => normalizeBaseUrl(`https://proxy.test${suffix}`), /query or fragment/);
+  }
+  assert.equal(normalizeBaseUrl("https://proxy.test/path%3Fpart%23name"), "https://proxy.test/path%3Fpart%23name/v1");
+});
+
 test("catalog envelopes accept data[], models[] and top-level arrays", () => {
   assert.deepEqual(readCatalogRows({ data: [codexRow()] }), [codexRow()]);
   assert.deepEqual(readCatalogRows({ models: [codexRow()] }), [codexRow()]);
@@ -54,7 +61,10 @@ test("codex rows map to Responses with context, output, modalities, reasoning, p
     output: 10,
     cacheRead: 0.1,
     cacheWrite: 2.5,
-    tieredPricing: [{ input: 4, output: 15, cacheRead: 0.2, cacheWrite: 5, range: [272000] }],
+    tieredPricing: [
+      { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5, range: [0, 272000] },
+      { input: 4, output: 15, cacheRead: 0.2, cacheWrite: 5, range: [272000] },
+    ],
   });
   assert.deepEqual(model.params.magpie.serviceTiers, [{ id: "priority", name: "Fast", description: "1.5x speed, increased usage" }]);
   assert.equal(model.params.magpie.priced, true);
@@ -126,9 +136,46 @@ test("multiple price tiers become half-open ranges with an open-ended last tier"
       { above: 400000, input: 4, output: 8, cache_read: 0.4, cache_write: 0 },
     ],
   });
-  assert.deepEqual(price.tieredPricing.map((tier) => tier.range), [[200000, 400000], [400000]]);
-  assert.deepEqual(price.tieredPricing[0], { input: 2, output: 4, cacheRead: 0.2, cacheWrite: 0, range: [200000, 400000] });
-  assert.deepEqual(price.tieredPricing[1], { input: 4, output: 8, cacheRead: 0.4, cacheWrite: 0, range: [400000] });
+  assert.deepEqual(price.tieredPricing.map((tier) => tier.range), [[0, 200000], [200000, 400000], [400000]]);
+  assert.deepEqual(price.tieredPricing[0], { ...price.cost, range: [0, 200000] });
+  assert.deepEqual(price.tieredPricing[1], { input: 2, output: 4, cacheRead: 0.2, cacheWrite: 0, range: [200000, 400000] });
+  assert.deepEqual(price.tieredPricing[2], { input: 4, output: 8, cacheRead: 0.4, cacheWrite: 0, range: [400000] });
+  for (const [tokens, expectedInput] of [[0, 1], [199999, 1], [200000, 2], [200001, 2], [399999, 2], [400000, 4], [400001, 4]]) {
+    const matching = price.tieredPricing.filter(({ range: [start, end = Infinity] }) => tokens >= start && tokens < end);
+    assert.equal(matching.length, 1, `exactly one price interval for ${tokens} tokens`);
+    assert.equal(matching[0].input, expectedInput);
+  }
+});
+
+test("partial and invalid tier rates inherit normalized base rates while explicit zero stays zero", () => {
+  const { cost, tieredPricing } = readPrice({
+    input: 1,
+    output: 2,
+    cache_read: 0.1,
+    cache_write: 3,
+    tiers: [
+      { above: 100000, input: 4 },
+      { above: 200000, input: -1, output: NaN, cache_read: "0.5", cache_write: Infinity },
+      { above: 300000, input: 0, output: 0, cache_read: 0, cache_write: 0 },
+    ],
+  });
+  assert.deepEqual(cost, { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 3 });
+  assert.deepEqual(tieredPricing, [
+    { ...cost, range: [0, 100000] },
+    { ...cost, input: 4, range: [100000, 200000] },
+    { ...cost, range: [200000, 300000] },
+    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, range: [300000] },
+  ]);
+});
+
+test("absent or invalid price tiers do not add a redundant base interval", () => {
+  const base = { input: 1, output: 2, cache_read: 0.1, cache_write: 3 };
+  for (const tiers of [undefined, [], [{ above: 0 }], [{ above: -1 }], [{ above: Infinity }], [{ above: "100000" }]]) {
+    assert.deepEqual(readPrice({ ...base, tiers }), {
+      cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 3 },
+      tieredPricing: undefined,
+    });
+  }
 });
 
 test("Magpie request headers carry the gateway key and opt into pricing", () => {

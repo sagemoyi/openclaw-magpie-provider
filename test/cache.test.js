@@ -33,6 +33,30 @@ function fixture() {
   };
 }
 
+function controlledFixture(options = {}) {
+  let calls = 0;
+  let requestSignal;
+  const pending = Promise.withResolvers();
+  const client = new CatalogClient({
+    ...options,
+    fetchRows: ({ signal }) => {
+      calls += 1;
+      requestSignal = signal;
+      signal.throwIfAborted();
+      const cancelled = () => pending.reject(signal.reason);
+      signal.addEventListener("abort", cancelled, { once: true });
+      return pending.promise.finally(() => signal.removeEventListener("abort", cancelled));
+    },
+  });
+  return {
+    client,
+    args: { baseUrl: "http://127.0.0.1:3425/v1", apiKey: "key-a" },
+    calls: () => calls,
+    signal: () => requestSignal,
+    resolve: (rows = [codexRow()]) => pending.resolve(rows),
+  };
+}
+
 test("TTL cache coalesces concurrent reads and atomically adds, updates and removes models", async () => {
   const f = fixture();
   const values = await Promise.all(Array.from({ length: 10 }, () => f.client.get(f.args)));
@@ -50,6 +74,94 @@ test("TTL cache coalesces concurrent reads and atomically adds, updates and remo
   f.change([]);
   f.advance(101);
   assert.deepEqual((await f.client.get(f.args)).models, []);
+});
+
+test("cancelling the first waiter does not cancel shared discovery or poison later reads", async () => {
+  const f = controlledFixture();
+  const controller = new AbortController();
+  const reason = new Error("first waiter cancelled");
+  const a = f.client.get({ ...f.args, signal: controller.signal });
+  const b = f.client.get(f.args);
+  const cancelled = assert.rejects(a, (error) => error === reason);
+  controller.abort(reason);
+  await cancelled;
+  assert.equal(f.signal().aborted, false);
+  const c = f.client.get(f.args);
+  f.resolve();
+  const [fromB, fromC] = await Promise.all([b, c]);
+  assert.equal(fromB, fromC);
+  assert.equal(fromB.stale, false);
+  assert.equal(await f.client.get(f.args), fromB);
+  assert.equal(f.calls(), 1);
+});
+
+test("cancelling a later waiter leaves the initiating and other waiters intact", async () => {
+  const f = controlledFixture();
+  const first = f.client.get(f.args);
+  const controller = new AbortController();
+  const reason = new Error("later waiter cancelled");
+  const later = f.client.get({ ...f.args, signal: controller.signal });
+  const other = f.client.get(f.args);
+  const cancelled = assert.rejects(later, (error) => error === reason);
+  controller.abort(reason);
+  await cancelled;
+  assert.equal(f.signal().aborted, false);
+  f.resolve();
+  const [fromFirst, fromOther] = await Promise.all([first, other]);
+  assert.equal(fromFirst, fromOther);
+  assert.equal(f.calls(), 1);
+});
+
+test("pre-cancelled waiters neither start discovery nor disturb an existing fetch", async () => {
+  const f = controlledFixture();
+  const reason = new Error("cancelled before discovery");
+  const signal = AbortSignal.abort(reason);
+  await assert.rejects(f.client.get({ ...f.args, signal }), (error) => error === reason);
+  assert.equal(f.calls(), 0);
+  assert.equal(f.client.entries.size, 0);
+  const first = f.client.get(f.args);
+  await assert.rejects(f.client.get({ ...f.args, signal }), (error) => error === reason);
+  assert.equal(f.signal().aborted, false);
+  f.resolve();
+  await first;
+  assert.equal(f.calls(), 1);
+});
+
+test("a genuine shared discovery timeout fails all waiters and retains error backoff", async () => {
+  const f = controlledFixture({ timeoutMs: 20 });
+  // AbortSignal.timeout is unref'ed; keep this mocked request alive until expiry.
+  const keepAlive = setTimeout(() => {}, 1000);
+  try {
+    const results = await Promise.allSettled([f.client.get(f.args), f.client.get(f.args)]);
+    assert.equal(f.signal().aborted, true);
+    assert.equal(f.signal().reason.name, "TimeoutError");
+    for (const result of results) {
+      assert.equal(result.status, "rejected");
+      assert.match(result.reason.message, /Magpie discovery failed \(network or invalid catalog\)/);
+    }
+    assert.equal(results[0].reason, results[1].reason);
+    await assert.rejects(f.client.get(f.args), (error) => error === results[0].reason);
+    assert.equal(f.calls(), 1);
+  } finally {
+    clearTimeout(keepAlive);
+  }
+});
+
+test("upstream network failures without a snapshot are backed off and can recover", async () => {
+  const f = fixture();
+  f.fail(undefined);
+  const results = await Promise.allSettled([f.client.get(f.args), f.client.get(f.args)]);
+  for (const result of results) {
+    assert.equal(result.status, "rejected");
+    assert.match(result.reason.message, /network or invalid catalog/);
+    assert.doesNotMatch(result.reason.message, /upstream detail/);
+  }
+  await assert.rejects(f.client.get(f.args), /network or invalid catalog/);
+  assert.equal(f.calls(), 1);
+  f.recover();
+  f.advance(101);
+  assert.equal((await f.client.get(f.args)).stale, false);
+  assert.equal(f.calls(), 2);
 });
 
 test("transient failures use a bounded stale snapshot without extending its expiry", async () => {

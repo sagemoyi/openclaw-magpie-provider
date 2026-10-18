@@ -9,7 +9,8 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fetchLiveProviderModelRows } from "openclaw/plugin-sdk/provider-catalog-live-runtime";
-import { streamSimple } from "openclaw/plugin-sdk/llm";
+import { calculateCost, streamSimple } from "openclaw/plugin-sdk/llm";
+import { projectModel } from "../src/catalog.js";
 import { createMagpieProvider } from "../src/provider.js";
 import { installHostPlugin, resolveHostCli } from "./install-host-plugin.js";
 import { clineRow, codexRow, thinkingWithoutLevelsRow } from "./fixtures.js";
@@ -101,6 +102,28 @@ async function startMock(getRows) {
     },
   };
 }
+
+test("real host pricing uses base rates below the threshold and tier rates at and above it", () => {
+  const model = projectModel(codexRow());
+  for (const input of [1000, 271999, 272000, 272001]) {
+    const usage = { input, output: 100, cacheRead: 0, cacheWrite: 0, cost: {} };
+    const actual = calculateCost(model, usage);
+    const [inputRate, outputRate] = input < 272000 ? [2, 10] : [4, 15];
+    const expected = (input * inputRate + 100 * outputRate) / 1e6;
+    assert.ok(Math.abs(actual.total - expected) < 1e-12, `wrong rate at ${input} input tokens`);
+  }
+  const partial = projectModel(codexRow({
+    magpie_price: {
+      input: 1, output: 2, cache_read: 0.1, cache_write: 3,
+      tiers: [{ above: 100000, input: 4 }],
+    },
+  }));
+  const usage = { input: 100000, output: 100, cacheRead: 1000, cacheWrite: 1000, cost: {} };
+  assert.deepEqual(calculateCost(partial, usage), {
+    input: 0.4, output: 0.0002, cacheRead: 0.0001, cacheWrite: 0.003,
+    total: 0.4 + 0.0002 + 0.0001 + 0.003,
+  });
+});
 
 test("real SDK discovery, Responses transport, Chat transport and thinking payloads", async (t) => {
   const mock = await startMock(() => [codexRow(), clineRow(), thinkingWithoutLevelsRow()]);

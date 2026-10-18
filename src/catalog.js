@@ -43,7 +43,8 @@ export function normalizeBaseUrl(value) {
   } catch {
     throw new Error("Magpie endpoint must be an absolute HTTP(S) URL");
   }
-  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+  // Empty query/fragment delimiters serialize even though search/hash are "".
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || /[?#]/.test(url.href)) {
     throw new Error("Magpie endpoint must be HTTP(S), without embedded credentials, query or fragment");
   }
   const path = url.pathname.replace(/\/+$/, "");
@@ -100,14 +101,14 @@ function readInputModalities(row) {
   return { input, known: true, dropped: [...new Set(dropped)] };
 }
 
-function readRate(source, fallback, key) {
-  const value = finiteNonNegative(source?.[key]);
-  return value ?? fallback[key] ?? 0;
+function readRate(source, fallback, sourceKey, targetKey) {
+  const value = finiteNonNegative(source?.[sourceKey]);
+  return value ?? fallback[targetKey] ?? 0;
 }
 
 export function readPrice(value) {
   if (!record(value)) return undefined;
-  const base = Object.fromEntries(RATE_KEYS.map(([sourceKey, targetKey]) => [targetKey, readRate(value, ZERO_COST, sourceKey)]));
+  const base = Object.fromEntries(RATE_KEYS.map(([sourceKey, targetKey]) => [targetKey, readRate(value, ZERO_COST, sourceKey, targetKey)]));
   const tiers = [];
   if (Array.isArray(value.tiers)) {
     const byAbove = new Map();
@@ -116,12 +117,14 @@ export function readPrice(value) {
       if (above && record(tier)) byAbove.set(above, tier);
     }
     const rows = [...byAbove].map(([above, tier]) => ({ above, tier })).sort((a, b) => a.above - b.above);
+    // OpenClaw selects only from tieredPricing once present, including short calls.
+    if (rows.length) tiers.push({ ...base, range: [0, rows[0].above] });
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
       const next = rows[index + 1]?.above;
       const rates = Object.fromEntries(RATE_KEYS.map(([sourceKey, targetKey]) => [
         targetKey,
-        readRate(row.tier, base, sourceKey),
+        readRate(row.tier, base, sourceKey, targetKey),
       ]));
       tiers.push({ ...rates, range: next && next > row.above ? [row.above, next] : [row.above] });
     }
@@ -330,8 +333,9 @@ export class CatalogClient {
       throw entry.error;
     }
 
-    const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
-    const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+    // The fetch belongs to the cache entry, not its first waiter. Caller aborts
+    // only stop their own wait; genuine upstream timeouts still enter backoff.
+    const requestSignal = AbortSignal.timeout(this.timeoutMs);
     entry.pending = (async () => {
       try {
         const rows = await this.fetchRows({

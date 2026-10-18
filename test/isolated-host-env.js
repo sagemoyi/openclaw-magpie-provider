@@ -3,6 +3,10 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+// Ambient profile/service/home selectors must not redirect any host subprocess.
+for (const name of Object.keys(process.env)) {
+  if (/^(?:OPENCLAW_|CLAWDBOT_|MOLTBOT_)/.test(name) || name === "PI_CODING_AGENT_DIR") delete process.env[name];
+}
 const stateDir = mkdtempSync(path.join(tmpdir(), "magpie-sdk-test-"));
 process.env.OPENCLAW_STATE_DIR = stateDir;
 process.env.OPENCLAW_CONFIG_PATH = path.join(stateDir, "openclaw.json");

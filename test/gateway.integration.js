@@ -27,20 +27,23 @@ function row(id, context = 64000) {
   });
 }
 
-test("Gateway publishes Magpie additions, removals, capability changes and empty catalogs without a restart", { timeout: 240000 }, async (t) => {
+test("Gateway publishes catalogs and hot-reloads provider config and plugin settings without a restart", { timeout: 300000 }, async (t) => {
   let rows = [row("model-a"), row("model-b")];
-  let context = 64000;
+  let expectedKey = "test-key";
+  let expectedPath = "/v1/models";
+  let reloadedRequests = 0;
   const server = createServer((req, res) => {
-    if (req.headers.authorization !== "Bearer test-key") {
+    if (req.headers.authorization !== `Bearer ${expectedKey}`) {
       res.writeHead(401);
       res.end("{}");
       return;
     }
-    if (req.url !== "/v1/models") {
+    if (req.url !== expectedPath) {
       res.writeHead(404);
       res.end("{}");
       return;
     }
+    if (expectedPath === "/reloaded/v1/models") reloadedRequests++;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ data: rows }));
   });
@@ -150,5 +153,64 @@ test("Gateway publishes Magpie additions, removals, capability changes and empty
   rows = [];
   await waitFor(list, (models) => models.length === 0, "empty catalog publication");
   assert.equal(await readFile(configPath, "utf8"), installedConfig);
-  t.diagnostic(`Catalog published without restart; isolated artifacts: ${stateDir}`);
+  // Change only provider config: the host must restart the subscribed service,
+  // not the Gateway/plugin. Require a later catalog change to prove the timer
+  // uses committed config, rather than accepting one host-triggered fetch.
+  const reconfigured = JSON.parse(installedConfig);
+  reconfigured.models.providers.magpie.baseUrl = `http://127.0.0.1:${server.address().port}/reloaded/v1`;
+  reconfigured.models.providers.magpie.apiKey = "rotated-test-key";
+  expectedKey = "rotated-test-key";
+  expectedPath = "/reloaded/v1/models";
+  rows = [row("model-d", 128000)];
+  const reconfiguredText = JSON.stringify(reconfigured);
+  await writeFile(configPath, reconfiguredText, { mode: 0o600 });
+  await waitFor(list, (models) => models.some((model) => model.id === "model-d"), "provider config reload");
+  const afterReload = reloadedRequests;
+  rows = [row("model-e", 160000)];
+  const afterTick = await waitFor(list,
+    (models) => models.some((model) => model.id === "model-e") && !models.some((model) => model.id === "model-d"),
+    "periodic discovery after config reload");
+  assert.equal(afterTick.find((model) => model.id === "model-e").contextWindow, 160000);
+  assert.ok(reloadedRequests > afterReload);
+  assert.equal(child.exitCode, null);
+  assert.equal(await readFile(configPath, "utf8"), reconfiguredText);
+
+  // A model-only override must also republish the same upstream revision.
+  reconfigured.models.providers.magpie.models = [{
+    id: "model-e", name: "Explicit Model E", reasoning: true, input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 192000, maxTokens: 2048,
+  }];
+  const overrideText = JSON.stringify(reconfigured);
+  await writeFile(configPath, overrideText, { mode: 0o600 });
+  await waitFor(list,
+    (models) => models.find((model) => model.id === "model-e")?.contextWindow === 192000,
+    "explicit model override reload");
+  assert.equal(await readFile(configPath, "utf8"), overrideText);
+
+  // Plugin settings replace the plugin instance, not just a retained service.
+  // Require later upstream-only publication as well as activation success.
+  reconfigured.plugins.entries.magpie.config.refreshSeconds = 11;
+  const replacementText = JSON.stringify(reconfigured);
+  // Reset the captured output to make replacement completion unambiguous even
+  // when bounded Gateway log retention trims earlier output.
+  log = "";
+  await writeFile(configPath, replacementText, { mode: 0o600 });
+  await waitFor(async () => log, (output) => /Plugin replacement applied: magpie/.test(output), "plugin replacement commit");
+  rows = [row("model-f", 200000)];
+  const replaced = await waitFor(list,
+    (models) => models.some((model) => model.id === "model-f"),
+    "catalog after plugin settings replacement");
+  assert.equal(replaced.find((model) => model.id === "model-e")?.contextWindow, 192000,
+    "explicit configured models remain published when absent upstream");
+  const afterReplacement = reloadedRequests;
+  rows = [row("model-g", 220000)];
+  await waitFor(list,
+    (models) => models.some((model) => model.id === "model-g") && !models.some((model) => model.id === "model-f"),
+    "periodic discovery after plugin replacement");
+  assert.ok(reloadedRequests > afterReplacement);
+  assert.equal(child.exitCode, null);
+  assert.equal(await readFile(configPath, "utf8"), replacementText);
+  assert.doesNotMatch(log, /plugin service (?:startup|stop).*timed out|Previous plugin cleanup failed/i);
+  t.diagnostic(`Catalog, provider config and plugin settings hot-reloaded without restart; isolated artifacts: ${stateDir}`);
 });

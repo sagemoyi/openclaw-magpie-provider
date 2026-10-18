@@ -45,16 +45,84 @@ resolve_cli() {
 
 CLI="$(resolve_cli)"
 
-# 所有命令统一注入 --profile dev；禁止调用方再覆盖 profile
-oc() {
+# HOME 是唯一允许的根目录输入（测试可以用临时 HOME）；不接受 OpenClaw/平台
+# fallback home 覆盖，也不把相对 HOME 或 / 悄悄解析成另一个实例。
+case "${HOME:-}" in
+  /*) ;;
+  *) echo 'dev.sh: HOME 必须是已存在的绝对目录' >&2; exit 2 ;;
+esac
+if [ ! -d "$HOME" ]; then
+  echo 'dev.sh: HOME 必须是已存在的绝对目录' >&2
+  exit 2
+fi
+DEV_HOME="$(cd -P -- "$HOME" && pwd -P)"
+if [ "$DEV_HOME" = / ]; then
+  echo 'dev.sh: 不允许使用 / 作为 HOME' >&2
+  exit 2
+fi
+STATE_DIR="$DEV_HOME/.openclaw-$PROFILE"
+CONFIG_PATH="$STATE_DIR/openclaw.json"
+# 已有 symlink 也不能把固定 dev 路径转回生产；不创建任何目录来做检查。
+if [ -L "$STATE_DIR" ] || { [ -e "$STATE_DIR" ] && [ ! -d "$STATE_DIR" ]; } ||
+   [ -L "$CONFIG_PATH" ] || { [ -e "$CONFIG_PATH" ] && [ ! -f "$CONFIG_PATH" ]; }; then
+  echo 'dev.sh: dev state/config 必须是普通目录/文件，不能是符号链接' >&2
+  exit 2
+fi
+
+# 拒绝目标/profile/目录覆盖，包括 =value 和 -- 后的参数；在任何 help 探测、
+# install 或 systemctl 操作前检查，而不只是检查最终转发给 CLI 的参数。
+validate_args() {
+  local arg option
   for arg in "$@"; do
-    case "$arg" in
-      --profile|--profile=*|--dev)
-        echo "dev.sh: 不允许自定义 profile（$arg），本脚本固定使用 --profile $PROFILE" >&2
+    option="${arg%%=*}"
+    case "$option" in
+      --profile|--dev|--no-dev|--url|--port|--gateway-url|--gateway-port|--host|--bind|--remote|--container|--home|--root|--state-dir|--config|--config-path|--workspace|--workspace-dir|--agent|--agent-dir|--service|--systemd-unit|--launchd-label|--windows-task-name|--env|--env-file|-p|-p?*)
+        echo "dev.sh: 不允许覆盖开发实例目标或目录（$option）" >&2
         exit 2 ;;
     esac
   done
-  "$CLI" --profile "$PROFILE" "$@"
+}
+validate_args "$@"
+
+# 不用 env -i：保留 PATH、Node 运行时/证书、代理等必要环境。清除宿主全部
+# 命名空间，覆盖 pinned host 的 config/service selectors，并清除兼容名称、
+# agent fallback、平台 home/XDG、systemd 总线和 Node 注入式选项。
+# 在子 shell 内执行，所有 CLI 调用（包括 consent help）都走同一入口。
+dev_env() (
+  local name
+  for name in $(compgen -e); do
+    case "$name" in
+      OPENCLAW_*|CLAWDBOT_*|MOLTBOT_*|PI_CODING_AGENT_DIR|USERPROFILE|HOMEDRIVE|HOMEPATH|PREFIX|ANDROID_DATA|XDG_*|DBUS_*|SYSTEMD_*|SUDO_*|NODE_OPTIONS)
+        unset "$name" ;;
+    esac
+  done
+  export HOME="$DEV_HOME"
+  export XDG_CONFIG_HOME="$DEV_HOME/.config" XDG_CACHE_HOME="$DEV_HOME/.cache"
+  export XDG_DATA_HOME="$DEV_HOME/.local/share" XDG_STATE_HOME="$DEV_HOME/.local/state"
+  export XDG_RUNTIME_DIR="/run/user/$UID"
+  export OPENCLAW_HOME="$DEV_HOME" OPENCLAW_PROFILE="$PROFILE"
+  export OPENCLAW_STATE_DIR="$STATE_DIR" OPENCLAW_CONFIG_PATH="$CONFIG_PATH"
+  export OPENCLAW_WORKSPACE_DIR="$STATE_DIR/workspace" OPENCLAW_GATEWAY_PORT=19001
+  # 固定 loopback URL 作为兜底，替换继承值；下方 RPC/status 另用固定本地
+  # port 保留 dev config 认证，同时忽略 config 中的 remote URL/mode。
+  export OPENCLAW_GATEWAY_URL=ws://127.0.0.1:19001
+  "$@"
+)
+
+oc() {
+  validate_args "$@"
+  # pinned host 的 URL override 不复用 config token；RPC/status 显式指定本地
+  # port 才既忽略远端 URL/mode，又保留 dev config 的本地认证。用户不能覆盖。
+  case "${1:-}:${2:-}" in
+    gateway:call|gateway:status)
+      local action="$2"
+      shift 2
+      dev_env "$CLI" --profile "$PROFILE" gateway "$action" --port 19001 "$@" ;;
+    logs:*)
+      shift
+      dev_env "$CLI" --profile "$PROFILE" logs --port 19001 "$@" ;;
+    *) dev_env "$CLI" --profile "$PROFILE" "$@" ;;
+  esac
 }
 
 need_plugin_linked_hint() {
@@ -64,7 +132,7 @@ need_plugin_linked_hint() {
 consent_flags() {
   # --force 是非交互确认本地来源；新版主机对 link/tarball 安装都要求显式能力同意
   local help
-  help="$("$CLI" plugins install --help 2>&1 || true)"
+  help="$(oc plugins install --help 2>&1 || true)"
   local extra=(--force)
   case "$help" in *"--accept-capabilities"*) extra+=(--accept-capabilities) ;; esac
   printf '%s\n' "${extra[@]}"
@@ -97,29 +165,30 @@ cmd_pack_verify() {
 }
 
 cmd_setup() {
-  echo "初始化 dev profile（config/state/workspace 位于 ~/.openclaw-dev，端口固定 19001）..."
+  echo "初始化 dev profile（config/state/workspace 位于 $STATE_DIR，端口固定 19001）..."
   oc setup --baseline
-  # 保证 gateway 配置：loopback + token 认证；端口由 dev profile 固定为 19001，不写入配置
-  node - <<'EOF'
+  # 使用与 CLI 完全相同的路径和环境；修复已有 dev 配置中的远端目标/监听设置。
+  dev_env node - <<'EOF'
 const fs = require("node:fs");
-const os = require("node:os");
 const crypto = require("node:crypto");
-const p = `${os.homedir()}/.openclaw-dev/openclaw.json`;
+const p = process.env.OPENCLAW_CONFIG_PATH;
 const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
 cfg.gateway = cfg.gateway ?? {};
-cfg.gateway.mode = cfg.gateway.mode ?? "local";
-cfg.gateway.bind = cfg.gateway.bind ?? "loopback";
-delete cfg.gateway.port; // dev profile 固定 19001（CLI 启动时注入），显式 port 反而被忽略
+cfg.gateway.mode = "local";
+cfg.gateway.bind = "loopback";
+cfg.gateway.port = 19001;
+delete cfg.gateway.remote;
 if (cfg.gateway.auth?.mode !== "token" || !cfg.gateway.auth?.token) {
   cfg.gateway.auth = { mode: "token", token: crypto.randomBytes(24).toString("hex") };
 }
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+fs.chmodSync(p, 0o600);
 console.log("gateway 配置：", JSON.stringify({ ...cfg.gateway, auth: { mode: "token", token: "<redacted>" } }));
 EOF
   echo
   echo "安装 dev Gateway 服务（systemd user，独立于生产的 openclaw-gateway.service）..."
   oc gateway install --force
-  systemctl --user disable openclaw-gateway-$PROFILE.service 2>/dev/null || true  # dev 实例不常驻：默认不开机自启，测试时才 start
+  dev_env systemctl --user disable openclaw-gateway-$PROFILE.service 2>/dev/null || true  # dev 实例不常驻：默认不开机自启，测试时才 start
   echo
   echo "setup 完成（服务已安装但默认不启动、不开机自启）。需要手动验证时：scripts/dev.sh install && scripts/dev.sh start，用完 scripts/dev.sh stop"
 }
@@ -134,7 +203,7 @@ case "$cmd" in
   restart)     oc gateway restart "$@" ;;
   inspect)     oc plugins inspect "$PLUGIN_ID" --runtime --json "$@" ;;
   start)       oc gateway start "$@" ;;
-  stop)        systemctl --user stop openclaw-gateway-$PROFILE.service ;;  # 直接走 systemd：gateway stop 的误伤护栏不识别 profile，可能拦错或停错
+  stop)        dev_env systemctl --user stop openclaw-gateway-$PROFILE.service ;;  # 直接走固定 dev unit，不让 gateway stop 探测其他实例
   status)      oc gateway status "$@" ; echo ; oc plugins list 2>/dev/null | grep -i "$PLUGIN_ID" || need_plugin_linked_hint ;;
   logs)        oc logs --follow "$@" ;;
   call)        oc gateway call "$@" ;;

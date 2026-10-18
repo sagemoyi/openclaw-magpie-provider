@@ -61,7 +61,7 @@ This is not cosmetic. OpenClaw's startup planner may skip a provider plugin when
 - **Input**: text/image; `pdf`/`file` → `document`; audio/video dropped with a warning.
 - **Reasoning**: `reasoning` is authoritative. `supported_reasoning_levels` (objects or strings) or `reasoning_levels` supply discrete efforts. `ultra` stays in diagnostics but is not exposed as a thinking level because Magpie normalizes it to `max`.
 - **Transport**: `/v1/responses` → `openai-responses`; else `/v1/messages` → `anthropic-messages`; else `openai-completions`.
-- **Prices**: `magpie_price` rates are USD per million tokens. `tiers[].above` becomes a half-open OpenClaw range; multiple tiers are bound by the next tier's `above`, with the last tier open-ended.
+- **Prices**: `magpie_price` rates are USD per million tokens. An explicit base range covers `[0, firstAbove)`, then `tiers[].above` becomes a half-open OpenClaw range; multiple tiers are bound by the next tier's `above`, with the last tier open-ended. Omitted/invalid tier rates inherit normalized base rates, including cache read/write; explicit zero remains zero.
 - **Cost fallback**: zero means unknown, not free.
 
 `params.magpie` retains the source, owner, default effort, native efforts, service tiers, pricing flag, and warnings for diagnostics. It is not an authorization signal.
@@ -77,7 +77,9 @@ This is not cosmetic. OpenClaw's startup planner may skip a provider plugin when
 
 Publication is serialized by `createCatalogSynchronizer`. The fingerprint includes endpoint, catalog revision, agent scope, and a hash of the current config (never the serialized config itself). Failed publication does not advance the fingerprint, so the next interval retries.
 
-The service owns a timer rather than the host scheduler. The timer has exactly the service's lifetime, is joined by `stop()`, and uses a generation counter so stopped or replaced callbacks cannot publish.
+The service owns a timer rather than the host scheduler. Every tick, including startup, runs the complete synchronization promise through the public `api.lifecycle.runInBackgroundContext` API. This gives asynchronous publication a fresh, live host invocation: plugin replacement can drain it or reject replacement-gate waits instead of deadlocking on an expired `start()` token. Each start has its own abort signal and generation. `stop()` cancels the timer and discovery wait, blocks queued/not-yet-admitted publication, then drains any host publication already admitted (the prepared-catalog API has no cancellation parameter). Shared discovery has its own timeout; cancelling a caller does not abort other consumers or introduce failure backoff.
+
+The service subscribes through `reload.configPrefixes` to `models.providers.magpie`, `auth`, `agents`, and `secrets`. The host restarts it with committed config after relevant hot changes, rather than retaining the startup endpoint/key or explicit model overrides. Plugin setting changes already trigger plugin replacement.
 
 `materializeCatalog` calls `loadPreparedModelCatalog({ readOnly: false, refreshFullCatalog: true })` and validates:
 

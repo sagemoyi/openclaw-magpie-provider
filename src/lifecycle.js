@@ -15,7 +15,10 @@ export function createCatalogSynchronizer({ discover, publish, config }) {
   let publishedKey;
   return (ctx, force = false) => {
     const run = tail.then(async () => {
+      ctx.signal?.throwIfAborted();
       const snapshot = await discover(ctx, { force });
+      // A stopped service must not publish even if a resolver ignored cancellation.
+      ctx.signal?.throwIfAborted();
       if (!snapshot) return { synced: false, reason: "unconfigured" };
       if (snapshot.stale) return { synced: false, reason: "stale" };
       const currentConfig = ctx.config ?? config;
@@ -40,34 +43,46 @@ export function createCatalogSynchronizer({ discover, publish, config }) {
 
 /**
  * Start the background loop without blocking host activation; stop drains it.
- * The plugin owns this timer: OpenClaw's service scheduler is optional and its
- * job semantics differ between in-process hosts, while a timer has exactly the
- * service's lifetime and is joined by stop().
+ * The plugin owns the timer, but each tick must enter a fresh host background
+ * invocation and return the full sync promise. An inherited, already-released
+ * start() token cannot participate safely in the host's plugin replacement drain.
  */
-export function createCatalogService({ sync, intervalMs, schedule = setTimeout, cancel = clearTimeout }) {
+export function createCatalogService({ sync, intervalMs, runInBackgroundContext, schedule = setTimeout, cancel = clearTimeout }) {
+  if (typeof runInBackgroundContext !== "function") {
+    throw new Error("Magpie catalog service requires the host background lifecycle API");
+  }
   let generation = 0;
   let active = false;
   let timer;
+  let controller;
   let pending = Promise.resolve();
   const debug = (ctx, message) => {
     if (process.env.MAGPIE_DEBUG === "1") ctx.logger?.warn?.(`[magpie] ${message}`);
   };
   return {
     id: "magpie-catalog",
+    // The host keeps service contexts immutable across config commits. Subscribe
+    // to every config scope used by discovery/auth/publication, so restart gets
+    // the committed config rather than retaining the startup endpoint or key.
+    reload: { configPrefixes: ["models.providers.magpie", "auth", "agents", "secrets"] },
     async start(ctx) {
       if (active) return;
       active = true;
+      controller = new AbortController();
+      const signal = controller.signal;
       const mine = ++generation;
       debug(ctx, `catalog service started; interval=${intervalMs}ms`);
       const tick = () => {
         if (!active || mine !== generation) return Promise.resolve();
         pending = Promise.resolve()
           .then(async () => {
-            const result = await sync(ctx);
+            signal.throwIfAborted();
+            const result = await runInBackgroundContext(() => sync({ ...ctx, signal }));
             debug(ctx, `catalog sync ${JSON.stringify(result)}`);
             return result;
           })
           .catch((error) => {
+            if (signal.aborted) return;
             ctx.logger?.warn?.(`Magpie catalog sync failed; retrying on the next interval: ${describeError(error)}`);
           })
           .finally(() => {
@@ -90,6 +105,9 @@ export function createCatalogService({ sync, intervalMs, schedule = setTimeout, 
       active = false;
       generation++;
       cancel(timer);
+      controller?.abort();
+      // Cancel this service's discovery wait, not a shared fetch owned by other
+      // consumers. A host publication already admitted must still be drained.
       await pending;
     },
   };

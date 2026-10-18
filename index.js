@@ -103,7 +103,11 @@ export default definePluginEntry({
         ctx,
       ),
     });
-    api.registerService(createCatalogService({ sync, intervalMs: magpie.client.ttlMs }));
+    api.registerService(createCatalogService({
+      sync,
+      intervalMs: magpie.client.ttlMs,
+      runInBackgroundContext: api.lifecycle?.runInBackgroundContext,
+    }));
 
     api.registerCli(({ program, config }) => {
       const command = program.command("magpie").description("Magpie model discovery diagnostics");

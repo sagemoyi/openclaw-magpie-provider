@@ -36,7 +36,7 @@ Host and Gateway suites create temporary state/config, free ports, mock Magpie s
 
 ## Isolated dev profile
 
-`scripts/dev.sh` forces `--profile dev` (state `~/.openclaw-dev`, port 19001) and refuses another profile:
+`scripts/dev.sh` fixes `--profile dev`, state/config under `$HOME/.openclaw-dev`, port 19001, and the loopback Gateway URL. It clears inherited host profile/path/service selectors and rejects flags that could override the profile, container, URL, port, config, or other target paths. Even capability probes use this isolated environment:
 
 ```bash
 scripts/dev.sh setup      # once per machine

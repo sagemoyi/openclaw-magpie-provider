@@ -22,11 +22,13 @@ Provider ID：`magpie`。只使用 OpenClaw 的 provider 插件接口，不需�
 
 ## 安装
 
-从源码目录安装到当前 OpenClaw：
+发布后从 npm 安装到当前 OpenClaw：
 
 ```bash
-openclaw plugins install --link /path/to/openclaw-magpie-provider
+openclaw plugins install @sagemoyi/openclaw-magpie-provider
 ```
+
+源码链接仅用于隔离开发，请使用下文的开发脚本，不要将生产实例链接到工作目录。
 
 如果使用了 `plugins.allow`，必须把 `magpie` 加进去，并启用插件；保留已有的 allow 项：
 
@@ -136,7 +138,9 @@ openclaw models auth login --provider magpie --method api-key
 - 网络/5xx/非法响应可在 stale 窗口内使用旧快照，不延长原快照寿命。
 - 合法空目录按空目录发布（模型确实被移除）；非法/重复 ID 让快照失败，不能把坏响应当成删除。
 - 请求时重新检查模型是否仍在目录中；已移除模型明确拒绝。
-- 后台同步串行化；旧任务不能覆盖新任务；服务停止/插件重载会取消并等待在途任务。
+- 后台同步串行化；服务停止/插件重载会取消本服务的目录等待，阻止尚未开始的发布；已交给宿主的发布会等待结束，不强行中断。
+- endpoint、凭据、auth/agent 上下文或显式模型配置变化时，目录服务会使用已提交配置重启，无需重启 Gateway。
+- 单个目录读取者取消，不会取消其他读取者共享的请求，也不会触发上游失败退避。
 
 ## 限制
 
