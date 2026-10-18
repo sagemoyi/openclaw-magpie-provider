@@ -2,6 +2,21 @@
   "name": "@sagemoyi/openclaw-magpie-provider",
   "version": "0.1.1",
   "description": "Magpie discovery and capability-aware provider for OpenClaw",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "magpie",
+    "provider",
+    "model-catalog"
+  ],
+  "homepage": "https://github.com/sagemoyi/openclaw-magpie-provider#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sagemoyi/openclaw-magpie-provider.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sagemoyi/openclaw-magpie-provider/issues"
+  },
   "type": "module",
   "license": "MIT",
   "publishConfig": {
