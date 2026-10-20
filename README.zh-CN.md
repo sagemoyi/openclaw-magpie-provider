@@ -17,7 +17,7 @@ Provider ID：`magpie`。只使用 OpenClaw 的 provider 插件接口，不需�
 
 ## 要求
 
-- OpenClaw `2026.10.3`，Node.js `>=24.16.0 <25 || >=26.1.0`。本版本按精确宿主版本验证。
+- OpenClaw `2026.10.5`，Node.js `>=24.16.0 <25 || >=26.1.0`。本版本按精确宿主版本验证。
 - 可访问的 Magpie Gateway，例如 `http://127.0.0.1:3425/v1`，以及可用的 Magpie gateway key。
 
 ## 安装
@@ -147,7 +147,7 @@ openclaw models auth login --provider magpie --method api-key
 - 只注册文本模型；Magpie 的图片/视频生成模型不会进入文本目录。
 - `magpie/codex/*` 走 OpenClaw 的标准 Responses transport，不等同于原生 Codex harness；Codex 原生压缩、子代理和 Fast 模式需要另做 harness 集成。
 - 价格依赖 Magpie 本机/共享 key 场景返回 `magpie_price`；拿不到时成本显示为未知零价。
-- 插件只针对 OpenClaw `2026.10.3` 验证；升级宿主后需要重新跑 host/gateway 测试。
+- 插件只针对 OpenClaw `2026.10.5` 验证；升级宿主后需要重新跑 host/gateway 测试。
 - `service_tiers`、Magpie 原生 web search 暂未映射。
 
 ## 开发与测试

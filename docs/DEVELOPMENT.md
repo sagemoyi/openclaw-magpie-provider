@@ -10,7 +10,7 @@ The default suites need no Magpie credentials and never touch a persistent dev o
 The tests import `openclaw/plugin-sdk/*`, so a local peer is required. Install it without changing package metadata:
 
 ```bash
-npm install --no-save --package-lock=false openclaw@2026.10.3
+npm install --no-save --package-lock=false openclaw@2026.10.5
 ```
 
 For a quick local checkout of an existing install, a symlink works too:

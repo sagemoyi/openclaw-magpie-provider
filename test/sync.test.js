@@ -67,6 +67,6 @@ test("stale snapshots are never published as fresh catalogs", async () => {
 test("a host without the prepared catalog owner is rejected explicitly", async () => {
   await assert.rejects(
     materializeCatalog(config, snapshot(["a"]), {}),
-    /targets OpenClaw 2026\.10\.3/,
+    /targets OpenClaw 2026\.10\.5/,
   );
 });

@@ -17,7 +17,7 @@ test("package and manifest agree on the provider id and target host", () => {
   assert.equal(manifest.id, "magpie");
   assert.deepEqual(manifest.providers, ["magpie"]);
   assert.deepEqual(pkg.openclaw.providers, ["magpie"]);
-  assert.equal(pkg.peerDependencies.openclaw, "2026.10.3");
-  assert.equal(pkg.openclaw.compat.pluginApi, "2026.10.3");
-  assert.equal(pkg.openclaw.build.openclawVersion, "2026.10.3");
+  assert.equal(pkg.peerDependencies.openclaw, "2026.10.5");
+  assert.equal(pkg.openclaw.compat.pluginApi, "2026.10.5");
+  assert.equal(pkg.openclaw.build.openclawVersion, "2026.10.5");
 });

@@ -47,7 +47,7 @@ MAGPIE_BASE_URL=http://127.0.0.1:3425/v1 MAGPIE_API_KEY=... node scripts/dev-liv
 
 只兼容 `package.json` 声明的宿主版本。当前：
 
-- OpenClaw `2026.10.3`
+- OpenClaw `2026.10.5`
 - Node.js `>=24.16.0 <25 || >=26.1.0`
 - `peerDependencies.openclaw`、`openclaw.compat.pluginApi`、`openclaw.compat.minGatewayVersion`、`openclaw.build.*` 必须一致。
 

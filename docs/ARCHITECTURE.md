@@ -103,7 +103,7 @@ It preserves unrelated `reasoning` fields and leaves Anthropic Messages payloads
 
 | Component | Target | Validation |
 | --- | --- | --- |
-| OpenClaw | `2026.10.3` only | Real SDK, managed `npm-pack:` install, isolated CLI and Gateway |
+| OpenClaw | `2026.10.5` only | Real SDK, managed `npm-pack:` install, isolated CLI and Gateway |
 | Magpie | `0.1.1285` observed | Live `/v1/models` discovery and mock HTTP/SSE |
 | Node.js | `>=24.16.0 <25 || >=26.1.0` | Matches target host |
 
