@@ -18,7 +18,7 @@ Provider ID: `magpie`. Built on the public provider plugin SDK; no OpenClaw or M
 
 ## Requirements
 
-- OpenClaw `2026.10.5`, Node.js `>=24.16.0 <25 || >=26.1.0`. This release targets that exact host.
+- OpenClaw `>=2026.10.0 <2027`, Node.js `>=24.16.0 <25 || >=26.1.0`. One release covers the whole 2026.10.x–2026.12.x window.
 - A reachable Magpie gateway, such as `http://127.0.0.1:3425/v1`, and a gateway key.
 
 ## Install
@@ -138,7 +138,7 @@ Configure under `plugins.entries.magpie.config`:
 - Text models only; Magpie image/video generators are excluded.
 - `magpie/codex/*` uses OpenClaw's standard Responses transport, not the native Codex harness. Native Codex compaction, subagents, and Fast mode need a separate harness integration.
 - Prices appear only when Magpie publishes `magpie_price`; otherwise cost is unknown-zero.
-- Validated against OpenClaw `2026.10.5` only; re-run host and Gateway tests after a host upgrade.
+- Validated on OpenClaw `2026.10.5`; re-run host and Gateway tests before widening `peerDependencies.openclaw`.
 - `service_tiers` and Magpie-native web search are not mapped yet.
 
 ## Develop and test

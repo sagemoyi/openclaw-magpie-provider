@@ -1,26 +1,26 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { hostCompatibilityViolations, hostVersionViolation, parseHostRange } from "./host-compat.mjs";
 
 const cwd = fileURLToPath(new URL("../", import.meta.url));
 const readJson = (file) => JSON.parse(readFileSync(new URL(file, import.meta.url), "utf8"));
 const pkg = readJson("../package.json");
-const target = pkg.peerDependencies.openclaw;
-for (const [field, value] of Object.entries({
-  "compat.pluginApi": pkg.openclaw.compat.pluginApi,
-  "compat.minGatewayVersion": pkg.openclaw.compat.minGatewayVersion,
-  "build.openclawVersion": pkg.openclaw.build.openclawVersion,
-  "build.pluginSdkVersion": pkg.openclaw.build.pluginSdkVersion,
-})) {
-  if (value !== target) throw new Error(`openclaw.${field} must match peerDependencies.openclaw (${target})`);
-}
+const violations = hostCompatibilityViolations(pkg);
+if (violations.length) throw new Error(violations.join("\n"));
+const { minimum } = parseHostRange(pkg.peerDependencies.openclaw);
+const range = pkg.peerDependencies.openclaw;
 let host;
 try {
   host = readJson("../node_modules/openclaw/package.json");
 } catch {
-  throw new Error(`Install the test host first: npm install --no-save --package-lock=false openclaw@${target}`);
+  throw new Error(`Install the test host first: npm install --no-save --package-lock=false openclaw@${minimum}`);
 }
-if (host.version !== target) throw new Error(`Installed OpenClaw ${host.version} does not match target ${target}`);
+const hostViolation = hostVersionViolation(pkg, host.version);
+if (hostViolation) {
+  throw new Error(`${hostViolation}; install a supported host with npm install --no-save --package-lock=false openclaw@${minimum}`);
+}
+console.log(`host range ${range}; tested on OpenClaw ${host.version}`);
 
 // The integration suites create temporary state/config and their own Gateway;
 // this entry point never starts or changes a persistent dev/prod service.

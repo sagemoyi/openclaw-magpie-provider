@@ -1,10 +1,16 @@
 import { PROVIDER } from "./catalog.js";
 
+/**
+ * Host floor advertised in package.json. The manifest test keeps it equal to
+ * the lower bound of `peerDependencies.openclaw`.
+ */
+export const MIN_OPENCLAW_VERSION = "2026.10.0";
+
 /** All catalog writes and locking stay in the host. Never write openclaw.json. */
 export async function materializeCatalog(config, snapshot, runtime, ctx = {}) {
   if (snapshot.stale) return { synced: false, reason: "stale" };
   if (typeof runtime.loadPreparedModelCatalog !== "function") {
-    throw new Error("This plugin targets OpenClaw 2026.10.5. Older hosts are not supported.");
+    throw new Error(`This plugin requires OpenClaw ${MIN_OPENCLAW_VERSION} or newer.`);
   }
   // Refresh the published inventory on its real lifecycle owner.
   // Do not create a synthetic config generation in the atomic runtime.

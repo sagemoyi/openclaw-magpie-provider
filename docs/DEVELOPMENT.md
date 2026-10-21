@@ -5,9 +5,9 @@ The default suites need no Magpie credentials and never touch a persistent dev o
 ## Environment
 
 - Node.js `>=24.16.0 <25 || >=26.1.0`.
-- An `openclaw` executable and a resolvable `openclaw` peer SDK at the exact target version.
+- An `openclaw` executable and a resolvable `openclaw` peer SDK inside the supported host range.
 
-The tests import `openclaw/plugin-sdk/*`, so a local peer is required. Install it without changing package metadata:
+The tests import `openclaw/plugin-sdk/*`, so a local peer is required. Install the current validated host without changing package metadata:
 
 ```bash
 npm install --no-save --package-lock=false openclaw@2026.10.5

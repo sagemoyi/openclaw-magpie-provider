@@ -6,7 +6,7 @@ This document describes the data sources, host integration boundaries, and maint
 
 The plugin connects Magpie model availability and capabilities to OpenClaw. The host owns credential storage, inference transport, session execution, and prepared catalog publication.
 
-Only public OpenClaw plugin SDK interfaces are used. Two host capabilities are version-coupled and validated against the exact target host:
+Only public OpenClaw plugin SDK interfaces are used. Two host capabilities are version-coupled and validated against a supported host:
 
 - `fetchLiveProviderModelRows` (`openclaw/plugin-sdk/provider-catalog-live-runtime`)
 - `loadPreparedModelCatalog` (`openclaw/plugin-sdk/agent-runtime`)
@@ -104,7 +104,7 @@ It preserves unrelated `reasoning` fields and leaves Anthropic Messages payloads
 
 | Component | Target | Validation |
 | --- | --- | --- |
-| OpenClaw | `2026.10.5` only | Real SDK, managed `npm-pack:` install, isolated CLI and Gateway |
+| OpenClaw | `>=2026.10.0 <2027` | Real SDK, managed `npm-pack:` install, isolated CLI and Gateway (validated on `2026.10.5`) |
 | Magpie | `0.1.1285` observed | Live `/v1/models` discovery and mock HTTP/SSE |
 | Node.js | `>=24.16.0 <25 || >=26.1.0` | Matches target host |
 
@@ -112,7 +112,7 @@ The target host is not a promise of compatibility with every Magpie deployment, 
 
 ## Private/version-coupled surfaces
 
-`fetchLiveProviderModelRows` and `loadPreparedModelCatalog` are host-owned capabilities that may change between OpenClaw releases. This plugin pins the exact host version, validates both in isolated host/Gateway tests, and does not attempt to support multiple host versions in one release.
+`fetchLiveProviderModelRows` and `loadPreparedModelCatalog` are host-owned capabilities that may change between OpenClaw releases. This plugin declares one supported host range with a lower bound (`peerDependencies.openclaw`, mirrored by `openclaw.compat.pluginApi`), validates both surfaces against the range in isolated host/Gateway tests, and reports the host it was built with through `openclaw.build.*`.
 
 ## Non-goals
 

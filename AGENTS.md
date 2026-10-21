@@ -45,13 +45,24 @@ MAGPIE_BASE_URL=http://127.0.0.1:3425/v1 MAGPIE_API_KEY=... node scripts/dev-liv
 
 ## 版本兼容
 
-只兼容 `package.json` 声明的宿主版本。当前：
+宿主版本用**带下限的范围**声明，一个插件版本覆盖一整条宿主线：
 
-- OpenClaw `2026.10.5`
-- Node.js `>=24.16.0 <25 || >=26.1.0`
-- `peerDependencies.openclaw`、`openclaw.compat.pluginApi`、`openclaw.compat.minGatewayVersion`、`openclaw.build.*` 必须一致。
+```json
+"peerDependencies": { "openclaw": ">=2026.10.0 <2027" },
+"openclaw": {
+  "compat": { "pluginApi": ">=2026.10.0 <2027", "minGatewayVersion": "2026.10.0" },
+  "build": { "openclawVersion": "2026.10.5", "pluginSdkVersion": "2026.10.5" }
+}
+```
 
-适配新宿主时改这几处，重跑 host/gateway 测试，再 bump 插件版本。不要为旧宿主保留第二套代码路径。
+- `peerDependencies.openclaw` = 支持的宿主范围；`openclaw.compat.pluginApi` 必须写同一个范围（宿主的安装/加载门禁按它判断）。
+- `openclaw.compat.minGatewayVersion` 取该范围的下限，不要写范围。
+- `openclaw.build.*` 写**实际验证过的宿主版本**（ClawHub 的 builtWith/sdk 元数据），必须是具体版本且落在范围内；不需要为了宿主小版本升级而发新插件版本。
+- 这套规则由 `scripts/host-compat.mjs` 统一校验，`npm run test:ci` 和 `test/manifest.test.js` 都会跑；`src/sync.js` 的 `MIN_OPENCLAW_VERSION` 必须等于下限。
+
+当前 OpenClaw `>=2026.10.0 <2027`（验证于 `2026.10.5`），Node.js `>=24.16.0 <25 || >=26.1.0`。
+
+适配新的宿主线（例如 2027）时改这几处范围、重跑 host/gateway 测试，再 bump 插件版本。不要为旧宿主保留第二套代码路径。
 
 ## 测试约定
 

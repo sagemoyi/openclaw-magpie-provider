@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { materializeCatalog } from "../src/sync.js";
+import { MIN_OPENCLAW_VERSION, materializeCatalog } from "../src/sync.js";
 
 const snapshot = (ids, extra = {}) => ({
   models: ids.map((id) => ({ id })),
@@ -67,6 +67,7 @@ test("stale snapshots are never published as fresh catalogs", async () => {
 test("a host without the prepared catalog owner is rejected explicitly", async () => {
   await assert.rejects(
     materializeCatalog(config, snapshot(["a"]), {}),
-    /targets OpenClaw 2026\.10\.5/,
+    (error) => error instanceof Error
+      && error.message.includes(`requires OpenClaw ${MIN_OPENCLAW_VERSION} or newer`),
   );
 });
