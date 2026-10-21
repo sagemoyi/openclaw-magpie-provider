@@ -19,6 +19,7 @@ The plugin does not patch OpenClaw, import build-hashed private modules, or modi
 | --- | --- | --- |
 | `GET /v1/models` | Availability, ownership, capabilities | Defines the discoverable text model set |
 | `X-Magpie-Prices: 1` request header | Per-million-token prices | Optional; Magpie may withhold prices for remote clients |
+| `User-Agent: openclaw` request header | Client identification | Sent by default; `sendUserAgent: false` removes it |
 | `native_endpoints` | Per-model transport | Responses when native; otherwise Completions; Anthropic Messages when native |
 | Explicit provider/model config | Deployment overrides | Standard `models.providers.magpie.models[]` |
 

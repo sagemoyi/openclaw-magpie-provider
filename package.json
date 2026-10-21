@@ -1,6 +1,6 @@
 {
   "name": "@sagemoyi/openclaw-magpie-provider",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Magpie discovery and capability-aware provider for OpenClaw",
   "keywords": [
     "openclaw",

@@ -34,7 +34,7 @@ No suite starts, stops, or modifies a persistent dev or production Gateway.
 - Thinking models with no levels and non-reasoning models.
 - Image/video exclusion, duplicate/invalid IDs, invalid limits.
 - Base and tiered price conversion, including base/threshold boundaries, multiple half-open ranges, partial cache-rate inheritance, and explicit zero.
-- `X-Magpie-Prices` and Bearer header construction.
+- `X-Magpie-Prices`, `User-Agent: openclaw` and Bearer header construction, including the `sendUserAgent` opt-out.
 - Cache coalescing, caller-local cancellation (including the initiating caller), independent shared timeout, genuine failure backoff, TTL, stale bounds, 401/403 invalidation, credential isolation, force.
 - Explicit model overrides and nested Magpie params; caller cancellation is forwarded through pending host authentication before catalog fetch.
 - Thinking profile defaults, nearest-effort selection, exact wire override, payload dialect.
@@ -46,7 +46,7 @@ No suite starts, stops, or modifies a persistent dev or production Gateway.
 
 ### Host integration
 
-- Real `fetchLiveProviderModelRows` sends the key and price header.
+- Real `fetchLiveProviderModelRows` sends the key, price and `openclaw` User-Agent headers.
 - Public SDK `calculateCost` uses base rates below a threshold, tier rates at/above it, and inherited partial-tier cache rates.
 - Responses model uses `/v1/responses` and `reasoning.effort`.
 - Chat model uses `/v1/chat/completions` and `reasoning_effort`.

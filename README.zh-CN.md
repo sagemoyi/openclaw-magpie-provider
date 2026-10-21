@@ -11,6 +11,7 @@ Provider ID：`magpie`。只使用 OpenClaw 的 provider 插件接口，不需�
 - 自动发现 Magpie 当前可用的文本模型，不需要手写 `models` 数组。
 - 映射 `context_window`、`max_output_tokens`、`modalities.input`、`reasoning_levels`、`native_endpoints`。
 - 通过 `X-Magpie-Prices: 1` 读取 `magpie_price`，映射为 OpenClaw 的 `cost` 和分档计价。
+- 目录请求默认带 `User-Agent: openclaw`，Magpie 可以识别 OpenClaw 客户端；可用 `sendUserAgent: false` 关闭。
 - 按模型的 `native_endpoints` 选择 `openai-responses` 或 `openai-completions`；没有原生端点时回退 Chat Completions。
 - Gateway 启动后每 60 秒检查一次目录；变化时通过宿主发布，不写 `openclaw.json`，不需要重启 Gateway。
 - 提供 `openclaw magpie catalog` 和 `openclaw magpie sync` 诊断命令。
@@ -22,11 +23,13 @@ Provider ID：`magpie`。只使用 OpenClaw 的 provider 插件接口，不需�
 
 ## 安装
 
-发布后从 npm 安装到当前 OpenClaw：
+推荐从 ClawHub 安装，ClawHub 会提供与当前 OpenClaw 宿主匹配的版本：
 
 ```bash
-openclaw plugins install @sagemoyi/openclaw-magpie-provider
+openclaw plugins install clawhub:@sagemoyi/openclaw-magpie-provider
 ```
+
+需要固定版本或通道时，可用 `clawhub:@sagemoyi/openclaw-magpie-provider@<version>` 或 `@beta`。
 
 源码链接仅用于隔离开发，请使用下文的开发脚本，不要将生产实例链接到工作目录。
 
@@ -130,6 +133,7 @@ openclaw models auth login --provider magpie --method api-key
 | `staleSeconds` | 300 | 0–86400 | 临时失败时允许使用上次成功快照的额外时间 |
 | `timeoutMs` | 10000 | 100–60000 | 单次目录请求超时 |
 | `includePrices` | true | Boolean | 是否发送 `X-Magpie-Prices: 1` |
+| `sendUserAgent` | true | Boolean | 目录请求是否发送 `User-Agent: openclaw` |
 
 行为：
 

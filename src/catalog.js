@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 
 export const PROVIDER = "magpie";
 
+/** Client identity sent to Magpie so it can recognize OpenClaw traffic. */
+export const OPENCLAW_USER_AGENT = "openclaw";
+
 /** Effort names that OpenClaw can expose as first-class thinking levels. */
 export const EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
@@ -259,11 +262,12 @@ export function projectCatalog(rows, options = {}) {
   return models.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export function buildMagpieHeaders({ apiKey, discoveryApiKey, includePrices = true } = {}) {
+export function buildMagpieHeaders({ apiKey, discoveryApiKey, includePrices = true, sendUserAgent = true } = {}) {
   const token = discoveryApiKey || apiKey;
   return {
     Accept: "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(sendUserAgent ? { "User-Agent": OPENCLAW_USER_AGENT } : {}),
     ...(includePrices ? { "X-Magpie-Prices": "1" } : {}),
   };
 }
@@ -292,9 +296,9 @@ function waitForCatalog(pending, signal) {
  * for `ttlMs`; a bounded stale window covers transient failures only.
  */
 export class CatalogClient {
-  constructor({ fetchRows, now = Date.now, ttlMs = 60000, staleMs = 300000, timeoutMs = 10000, includePrices = true, warn = () => {} }) {
+  constructor({ fetchRows, now = Date.now, ttlMs = 60000, staleMs = 300000, timeoutMs = 10000, includePrices = true, sendUserAgent = true, warn = () => {} }) {
     if (typeof fetchRows !== "function") throw new Error("CatalogClient requires a fetchRows function");
-    Object.assign(this, { fetchRows, now, ttlMs, staleMs, timeoutMs, includePrices, warn });
+    Object.assign(this, { fetchRows, now, ttlMs, staleMs, timeoutMs, includePrices, sendUserAgent, warn });
     this.entries = new Map();
   }
 
@@ -348,7 +352,12 @@ export class CatalogClient {
           readRows: readCatalogRows,
           requireHttps: false,
           buildRequestHeaders: ({ apiKey: requestApiKey, discoveryApiKey }) =>
-            buildMagpieHeaders({ apiKey: requestApiKey, discoveryApiKey, includePrices: this.includePrices }),
+            buildMagpieHeaders({
+              apiKey: requestApiKey,
+              discoveryApiKey,
+              includePrices: this.includePrices,
+              sendUserAgent: this.sendUserAgent,
+            }),
         });
         const models = projectCatalog(rows, { includePrices: this.includePrices });
         const fetchedAt = this.now();

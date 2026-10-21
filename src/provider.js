@@ -137,6 +137,7 @@ export function createMagpieProvider({
     staleMs: (settings.staleSeconds ?? 300) * 1000,
     timeoutMs: settings.timeoutMs ?? 10000,
     includePrices: settings.includePrices ?? true,
+    sendUserAgent: settings.sendUserAgent ?? true,
     warn: (message) => logger.warn(message),
   });
   const bindings = new Map();

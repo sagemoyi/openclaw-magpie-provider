@@ -59,6 +59,7 @@ function sendResponses(res) {
 async function startMock(getRows) {
   const requests = [];
   let modelHeader;
+  let modelUserAgent;
   const server = createServer(async (req, res) => {
     if (req.headers.authorization !== "Bearer test-key") {
       res.statusCode = 401;
@@ -68,6 +69,7 @@ async function startMock(getRows) {
     }
     if (req.url === "/v1/models") {
       modelHeader = req.headers["x-magpie-prices"];
+      modelUserAgent = req.headers["user-agent"];
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ data: getRows() }));
       return;
@@ -96,6 +98,7 @@ async function startMock(getRows) {
     requests,
     baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
     modelHeader: () => modelHeader,
+    modelUserAgent: () => modelUserAgent,
     close() {
       server.closeAllConnections();
       server.close();
@@ -148,6 +151,8 @@ test("real SDK discovery, Responses transport, Chat transport and thinking paylo
   const catalog = await magpie.provider.catalog.run({ config });
   assert.equal(catalog.provider.models.length, 3);
   assert.equal(mock.modelHeader(), "1");
+  // The real host fetch path must forward our User-Agent unchanged.
+  assert.equal(mock.modelUserAgent(), "openclaw");
 
   const codex = magpie.provider.resolveDynamicModel({ config, modelId: "codex/gpt-6.1-sol" });
   assert.equal(codex.api, "openai-responses");

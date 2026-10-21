@@ -178,15 +178,23 @@ test("absent or invalid price tiers do not add a redundant base interval", () =>
   }
 });
 
-test("Magpie request headers carry the gateway key and opt into pricing", () => {
+test("Magpie request headers carry the gateway key, identify OpenClaw and opt into pricing", () => {
   assert.deepEqual(buildMagpieHeaders({ apiKey: "secret", includePrices: true }), {
     Accept: "application/json",
     Authorization: "Bearer secret",
+    "User-Agent": "openclaw",
     "X-Magpie-Prices": "1",
   });
   assert.deepEqual(buildMagpieHeaders({ discoveryApiKey: "discovery", includePrices: false }), {
     Accept: "application/json",
     Authorization: "Bearer discovery",
+    "User-Agent": "openclaw",
+  });
+  // Sending the client identity is a default, not a requirement.
+  assert.deepEqual(buildMagpieHeaders({ discoveryApiKey: "discovery", sendUserAgent: false }), {
+    Accept: "application/json",
+    Authorization: "Bearer discovery",
+    "X-Magpie-Prices": "1",
   });
 });
 

@@ -92,11 +92,11 @@ test("explicit model configuration overrides live metadata without losing nested
   assert.deepEqual(disabled.compat.supportedReasoningEfforts, []);
 });
 
-function fakeProvider({ rows = [codexRow()], now = () => Date.now() } = {}) {
+function fakeProvider({ rows = [codexRow()], now = () => Date.now(), config } = {}) {
   let current = rows;
   const calls = [];
   const provider = createMagpieProvider({
-    config: { models: { providers: { magpie: { baseUrl: "http://127.0.0.1:3425/v1", models: [] } } } },
+    config: config ?? { models: { providers: { magpie: { baseUrl: "http://127.0.0.1:3425/v1", models: [] } } } },
     now,
     fetchRows: async (params) => {
       calls.push(params);
@@ -123,6 +123,7 @@ test("discovery resolves credentials, returns a provider catalog, and resolves d
   assert.equal(fixture.calls[0].requireHttps, false);
   const headers = fixture.calls[0].buildRequestHeaders({ apiKey: "test-key" });
   assert.equal(headers.Authorization, "Bearer test-key");
+  assert.equal(headers["User-Agent"], "openclaw");
   assert.equal(headers["X-Magpie-Prices"], "1");
 
   const catalog = await fixture.provider.provider.catalog.run({ config });
@@ -132,6 +133,20 @@ test("discovery resolves credentials, returns a provider catalog, and resolves d
   const model = fixture.provider.provider.resolveDynamicModel({ config, modelId: "codex/gpt-6.1-sol" });
   assert.equal(model.provider, "magpie");
   assert.equal(model.baseUrl, "http://127.0.0.1:3425/v1");
+});
+
+test("provider settings can opt out of the OpenClaw User-Agent", async () => {
+  const config = { models: { providers: { magpie: { baseUrl: "http://127.0.0.1:3425/v1", models: [] } } } };
+  const silent = fakeProvider({
+    config: {
+      ...config,
+      plugins: { entries: { magpie: { enabled: true, config: { sendUserAgent: false } } } },
+    },
+  });
+  await silent.provider.discover({ config });
+  const headers = silent.calls[0].buildRequestHeaders({ apiKey: "test-key" });
+  assert.equal(headers["User-Agent"], undefined);
+  assert.equal(headers["X-Magpie-Prices"], "1");
 });
 
 test("request-time discovery rejects removed models and patches the final payload", async () => {

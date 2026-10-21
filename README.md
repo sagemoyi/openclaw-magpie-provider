@@ -11,6 +11,7 @@ Provider ID: `magpie`. Built on the public provider plugin SDK; no OpenClaw or M
 - Discovers Magpie's current text models from `GET /v1/models`; no hand-maintained model array.
 - Maps `context_window`, `max_output_tokens`, `modalities.input`, `reasoning_levels`, and `native_endpoints`.
 - Requests `X-Magpie-Prices: 1` and maps `magpie_price` to OpenClaw `cost` and tiered pricing.
+- Sends `User-Agent: openclaw` on discovery requests so Magpie can recognize OpenClaw clients; opt out with `sendUserAgent: false`.
 - Routes each model to OpenAI Responses or Chat Completions based on its native endpoint.
 - Refreshes the catalog every 60 seconds through the host-owned prepared catalog; no config writes, no Gateway restart.
 - Adds `openclaw magpie catalog` and `openclaw magpie sync` diagnostics.
@@ -22,9 +23,13 @@ Provider ID: `magpie`. Built on the public provider plugin SDK; no OpenClaw or M
 
 ## Install
 
+Install from ClawHub, which serves the release that matches your OpenClaw host:
+
 ```bash
-openclaw plugins install @sagemoyi/openclaw-magpie-provider
+openclaw plugins install clawhub:@sagemoyi/openclaw-magpie-provider
 ```
+
+Pin an exact release (`clawhub:@sagemoyi/openclaw-magpie-provider@<version>`) or a channel such as `@beta` when you need reproducibility.
 
 If you use `plugins.allow`, add `magpie` without replacing existing entries, and enable it:
 
@@ -118,6 +123,7 @@ Configure under `plugins.entries.magpie.config`:
 | `staleSeconds` | 300 | 0–86400 | Extra time a successful snapshot may be used after transient failures |
 | `timeoutMs` | 10000 | 100–60000 | Per-request discovery timeout |
 | `includePrices` | true | Boolean | Send `X-Magpie-Prices: 1` |
+| `sendUserAgent` | true | Boolean | Send `User-Agent: openclaw` on discovery requests |
 
 - 401/403 invalidates the cache immediately; no stale fallback.
 - Network/5xx/invalid responses may use a bounded stale snapshot without extending its lifetime.

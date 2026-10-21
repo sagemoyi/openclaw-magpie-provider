@@ -40,6 +40,10 @@
       "includePrices": {
         "type": "boolean",
         "default": true
+      },
+      "sendUserAgent": {
+        "type": "boolean",
+        "default": true
       }
     }
   },
